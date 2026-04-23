@@ -1,0 +1,36 @@
+# Probe LoRA: small rank, high lr, NO regularization, NO warmup, NO decay.
+# Short-lived: trained, measured, then discarded. Main LoRA is untouched.
+rank: 8
+alpha: 16
+dropout: 0.0
+target_modules:
+  - "q_proj"
+  - "k_proj"
+  - "v_proj"
+  - "o_proj"
+  - "gate_proj"
+  - "up_proj"
+  - "down_proj"
+bias: "none"
+use_rslora: false
+use_dora: false
+
+# Training config for probe stage
+learning_rate: 1.0e-3
+weight_decay: 0.0
+num_train_epochs: 3
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 4
+max_grad_norm: 1.0
+warmup_ratio: 0.0
+lr_scheduler_type: "constant"
+optim: "adamw_torch"
+
+# Response-only loss (loss masked to target tokens only, same as stage3 SFT)
+response_prefix: "response: "
+add_eos_to_target: true
+completion_only_loss: true
+
+# Data subset sizes for PoC; production SCP loops over disjoint subsets D_k of size ~a few hundred
+probe_subset_size: 200
+probe_subset_seed: ${seed}

@@ -1,0 +1,11 @@
+# Monolingual EN SEC 10-K corpus for Stage A probing at scale.
+kind: "hf"
+path: "alwaysgood/sec-10k-pre-processed"
+name: null
+split: "train"
+streaming: false
+source_text_field: "text"
+id_field: "id"
+source_lang_iso: "en"
+target_lang_iso: "ko"
+max_rows: null

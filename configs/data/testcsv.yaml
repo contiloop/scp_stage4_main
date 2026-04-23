@@ -1,0 +1,16 @@
+# Local parallel CSV (EN source + KO reference).
+# Used in the PoC for BOTH:
+#   (a) monolingual probe training (drops Target_Ko, keeps Source_En)
+#   (b) reference-based analysis metrics (COMET-ref, chrF) — the Target_Ko column is a held-out gold signal
+kind: "csv"
+path: "data/test.csv"
+id_column: "ID"
+source_column: "Source_En"
+reference_column: "Target_Ko"
+sector_column: "Sector"
+source_type_column: "Source_Type"
+sub_sector_column: "Sub_Sector"
+ticker_column: "Ticker"
+source_lang_iso: "en"
+target_lang_iso: "ko"
+max_rows: null

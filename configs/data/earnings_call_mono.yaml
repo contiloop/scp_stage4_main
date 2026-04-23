@@ -1,0 +1,11 @@
+# Monolingual EN earnings-call transcript corpus.
+kind: "hf"
+path: "alwaysgood/earnings_call_mono"
+name: null
+split: "train"
+streaming: false
+source_text_field: "text"
+id_field: "id"
+source_lang_iso: "en"
+target_lang_iso: "ko"
+max_rows: null

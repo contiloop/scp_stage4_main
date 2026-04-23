@@ -1,0 +1,3 @@
+defaults:
+  - poc_scp_probe
+  - _self_

@@ -1,0 +1,22 @@
+defaults:
+  - model: qwen3_4b_it
+  - data: testcsv
+  - prompts: translation_dynamic_5
+  - probe: aggressive
+  - generation: greedy
+  - qe: comet_kiwi
+  - experiment: poc
+  - _self_
+
+seed: 42
+
+# Monolingual SCP Stage A PoC.
+# Probe LoRA is aggressive, short-lived, and discarded after each run.
+# Main LoRA is NOT touched in this PoC; only Stage A is explored.
+
+hydra:
+  run:
+    dir: ${experiment.output_root}/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${experiment.output_root}/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

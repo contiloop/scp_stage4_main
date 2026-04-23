@@ -1,0 +1,6 @@
+# Hyperparameter sweep for the PoC: discover under which probe settings
+# collapse is most pronounced. Each combo is trained from a fresh probe LoRA.
+grid:
+  rank: [4, 8, 16]
+  learning_rate: [5.0e-4, 1.0e-3, 5.0e-3]
+  num_train_epochs: [1, 3]

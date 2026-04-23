@@ -1,0 +1,3 @@
+name: "scp-stage-a-poc"
+output_root: "artifacts/poc_scp_probe"
+processed_dir: "data/processed/poc_scp_probe"
