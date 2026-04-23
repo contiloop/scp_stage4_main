@@ -91,8 +91,9 @@ class _ChrfRefQE:
 
 _COMET_DRIVER_SCRIPT = textwrap.dedent(
     """
-    import json, sys
+    import json, sys, glob, os
     from comet import download_model, load_from_checkpoint
+    from huggingface_hub import snapshot_download
 
     args = json.loads(sys.stdin.read())
     model_name = args["model_name"]
@@ -102,14 +103,57 @@ _COMET_DRIVER_SCRIPT = textwrap.dedent(
     mode       = args.get("mode", "qe")  # "qe" for src,mt or "ref" for src,mt,ref
     payload    = args["payload"]
 
+    def _candidates(name):
+        if not name:
+            return []
+        # Keep the requested identifier as-is.
+        # Short-name aliases (e.g., "wmt23-...") can trigger 404s against
+        # HF model APIs even when the canonical repo id exists.
+        out = [name]
+        if "/" not in name:
+            out.append("Unbabel/" + name)
+        # De-duplicate while preserving order.
+        uniq = []
+        seen = set()
+        for x in out:
+            if x not in seen:
+                uniq.append(x)
+                seen.add(x)
+        return uniq
+
+    def _download_with_aliases(name):
+        last_exc = None
+        for cand in _candidates(name):
+            try:
+                return download_model(cand), cand
+            except Exception as exc:
+                last_exc = exc
+
+        # Fallback: COMET registry lookup may fail for some releases even when
+        # the model exists on HF. In that case, download the repo snapshot
+        # directly and locate a checkpoint file.
+        for cand in _candidates(name):
+            try:
+                snap = snapshot_download(repo_id=cand)
+                ckpts = sorted(glob.glob(os.path.join(snap, "**", "*.ckpt"), recursive=True))
+                if not ckpts:
+                    continue
+                return ckpts[0], cand
+            except Exception as exc:
+                last_exc = exc
+
+        if last_exc is None:
+            raise RuntimeError("No COMET model candidates to try.")
+        raise last_exc
+
     try:
-        ckpt = download_model(model_name)
+        ckpt, used_name = _download_with_aliases(model_name)
     except Exception as exc:
         if not fallback:
             raise
         sys.stderr.write(f"[comet-subprocess] primary {model_name} failed: {exc}; falling back to {fallback}\\n")
-        ckpt = download_model(fallback)
-        model_name = fallback
+        ckpt, used_name = _download_with_aliases(fallback)
+    model_name = used_name
 
     model = load_from_checkpoint(ckpt)
     result = model.predict(payload, batch_size=batch_size, gpus=gpus, progress_bar=False)
@@ -143,11 +187,17 @@ def _run_comet_subprocess(
         "payload": payload,
     }
     try:
+        env = os.environ.copy()
+        # Some runtimes export HF_HUB_ENABLE_HF_TRANSFER=1 globally, but the
+        # COMET venv may not have hf_transfer installed. Force standard download
+        # path for subprocess stability.
+        env["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
         proc = subprocess.run(
             [python_bin, driver_path],
             input=json.dumps(args),
             capture_output=True,
             text=True,
+            env=env,
             check=False,
         )
     finally:

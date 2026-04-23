@@ -1,11 +1,11 @@
 # Reference-free quality estimation for the collapse signal dQE(s).
-# Primary: wmt23-cometkiwi-da (reference-free).
+# Primary: wmt22-cometkiwi-da (reference-free).
 # Optional chrF on self-translation to source char-level is a poor signal; we use chrF only vs. gold.
 primary:
   backend: "comet_kiwi"
-  model_name: "Unbabel/wmt23-cometkiwi-da-xxl"
-  fallback_model_name: "Unbabel/wmt22-cometkiwi-da"
-  batch_size: 16
+  model_name: "Unbabel/wmt22-cometkiwi-da"
+  fallback_model_name: null
+  batch_size: 32
   gpus: 1
 
 # Optional reference-based metrics used for analysis only (test.csv has gold Target_Ko).
