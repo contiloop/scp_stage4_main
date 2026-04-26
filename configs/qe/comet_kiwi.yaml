@@ -1,11 +1,14 @@
 # Reference-free quality estimation for the collapse signal dQE(s).
-# Primary: wmt22-cometkiwi-da (reference-free).
-# Optional chrF on self-translation to source char-level is a poor signal; we use chrF only vs. gold.
+# Primary: MetricX-24 hybrid XXL (bfloat16).
+# MetricX predicts error scores in [0,25] (lower=better); qe.py converts this to
+# quality scores (higher=better) so delta_qe logic stays unchanged.
 primary:
-  backend: "comet_kiwi"
-  model_name: "Unbabel/wmt22-cometkiwi-da"
+  backend: "metricx24"
+  model_name: "google/metricx-24-hybrid-xxl-v2p6-bfloat16"
+  tokenizer_name: "google/mt5-xl"
+  max_input_length: 1536
   fallback_model_name: null
-  batch_size: 32
+  batch_size: 8
   gpus: 1
 
 # Optional reference-based metrics used for analysis only (test.csv has gold Target_Ko).

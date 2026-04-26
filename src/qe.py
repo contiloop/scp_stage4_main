@@ -89,6 +89,64 @@ class _ChrfRefQE:
 # --------------------------------------------------------------------------- #
 
 
+_METRICX_DRIVER_SCRIPT = textwrap.dedent(
+    """
+    import json
+    import torch
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
+    args = json.loads(input())
+    model_name = args["model_name"]
+    tokenizer_name = args.get("tokenizer_name") or "google/mt5-xl"
+    batch_size = int(args.get("batch_size", 8))
+    max_input_length = int(args.get("max_input_length", 1536))
+    payload = args["payload"]
+    mode = args.get("mode", "qe")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype="auto")
+    model.to(device)
+    model.eval()
+
+    def _format_row(row):
+        src = str(row.get("src", ""))
+        mt = str(row.get("mt", ""))
+        if mode == "qe":
+            return f"source: {src} candidate: {mt}"
+        ref = str(row.get("ref", ""))
+        return f"source: {src} candidate: {mt} reference: {ref}"
+
+    formatted = [_format_row(r) for r in payload]
+    scores = []
+    for start in range(0, len(formatted), batch_size):
+        chunk = formatted[start:start + batch_size]
+        enc = tokenizer(
+            chunk,
+            max_length=max_input_length,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )
+        input_ids = enc["input_ids"].to(device)
+        attn = enc["attention_mask"].to(device)
+        decoder_input_ids = torch.zeros((input_ids.shape[0], 1), dtype=torch.long, device=device)
+        with torch.inference_mode():
+            out = model(
+                input_ids=input_ids,
+                attention_mask=attn,
+                decoder_input_ids=decoder_input_ids,
+            )
+            # MetricX regression head convention from official metricx24/models.py:
+            # prediction is logit of token id 250089 at first decoder position.
+            batch_scores = out.logits[:, 0, 250089].float().clamp(0.0, 25.0).tolist()
+            scores.extend(float(x) for x in batch_scores)
+
+    print(json.dumps({"model_name": model_name, "scores": scores}))
+    """
+).strip()
+
+
 _COMET_DRIVER_SCRIPT = textwrap.dedent(
     """
     import json, sys, glob, os
@@ -218,6 +276,59 @@ def _run_comet_subprocess(
         raise RuntimeError(f"Could not parse COMET subprocess output: {exc}\nraw: {proc.stdout[:500]}")
 
 
+def _run_metricx_subprocess(
+    python_bin: str,
+    model_name: str,
+    tokenizer_name: str,
+    batch_size: int,
+    max_input_length: int,
+    mode: str,
+    payload: list[dict[str, str]],
+) -> dict[str, Any]:
+    if not Path(python_bin).exists():
+        raise FileNotFoundError(f"METRICX_PYTHON does not exist: {python_bin}")
+
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as fh:
+        fh.write(_METRICX_DRIVER_SCRIPT)
+        driver_path = fh.name
+
+    args = {
+        "model_name": model_name,
+        "tokenizer_name": tokenizer_name,
+        "batch_size": int(batch_size),
+        "max_input_length": int(max_input_length),
+        "mode": mode,
+        "payload": payload,
+    }
+    try:
+        env = os.environ.copy()
+        env["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+        proc = subprocess.run(
+            [python_bin, driver_path],
+            input=json.dumps(args),
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+    finally:
+        try:
+            os.unlink(driver_path)
+        except OSError:
+            pass
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"MetricX subprocess failed (rc={proc.returncode}).\n"
+            f"stderr:\n{proc.stderr}\n"
+            f"stdout:\n{proc.stdout[:500]}"
+        )
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Could not parse MetricX subprocess output: {exc}\nraw: {proc.stdout[:500]}")
+
+
 class CometKiwiSubprocessScorer:
     """Reference-free QE via COMET-Kiwi running in a separate venv."""
 
@@ -252,6 +363,48 @@ class CometKiwiSubprocessScorer:
         # The model actually used may differ if fallback was triggered.
         self.model_name = result.get("model_name", self.model_name)
         return [float(x) for x in result["scores"]]
+
+
+class MetricX24SubprocessScorer:
+    """Reference-free QE via MetricX-24 hybrid model in a separate env.
+
+    MetricX raw outputs are error scores in [0, 25] where LOWER is better.
+    We convert to quality scores by default (quality = 25 - error) so the rest
+    of SCP logic can keep using larger-is-better QE semantics.
+    """
+
+    def __init__(
+        self,
+        python_bin: str,
+        model_name: str,
+        tokenizer_name: str = "google/mt5-xl",
+        batch_size: int = 8,
+        max_input_length: int = 1536,
+    ) -> None:
+        self.python_bin = python_bin
+        self.model_name = model_name
+        self.tokenizer_name = tokenizer_name
+        self.batch_size = int(batch_size)
+        self.max_input_length = int(max_input_length)
+        self.name = f"metricx24_subprocess ({model_name}, via {python_bin})"
+
+    def score(self, pairs):
+        if not pairs:
+            return []
+        payload = [{"src": str(src), "mt": str(mt), "ref": ""} for src, mt in pairs]
+        result = _run_metricx_subprocess(
+            python_bin=self.python_bin,
+            model_name=self.model_name,
+            tokenizer_name=self.tokenizer_name,
+            batch_size=self.batch_size,
+            max_input_length=self.max_input_length,
+            mode="qe",
+            payload=payload,
+        )
+        raw_error = [float(x) for x in result["scores"]]
+        # Convert error->quality so larger means better, matching COMET semantics
+        # used in delta_qe = q_before - q_after.
+        return [max(0.0, 25.0 - e) for e in raw_error]
 
 
 class CometRefSubprocessScorer:
@@ -330,6 +483,14 @@ def _comet_python_bin() -> str | None:
     return val or None
 
 
+def _metricx_python_bin() -> str | None:
+    # Prefer explicit METRICX_PYTHON, then reuse COMET_PYTHON if available.
+    val = os.environ.get("METRICX_PYTHON", "").strip()
+    if val:
+        return val
+    return _comet_python_bin()
+
+
 def build_qe_primary(cfg) -> Any:
     """Return a reference-free QE scorer.
 
@@ -339,6 +500,22 @@ def build_qe_primary(cfg) -> Any:
       3. dummy scorer (zeros) with a loud warning
     """
     backend = str(cfg.primary.backend).strip().lower()
+    if backend in {"metricx24", "metricx_24", "metricx24_hybrid"}:
+        metricx_py = _metricx_python_bin()
+        if not metricx_py:
+            return _DummyQE("METRICX_PYTHON/COMET_PYTHON unset for metricx24 backend")
+        model_name = str(cfg.primary.model_name)
+        tokenizer_name = str(cfg.primary.get("tokenizer_name", "google/mt5-xl"))
+        batch_size = int(cfg.primary.get("batch_size", 8))
+        max_input_length = int(cfg.primary.get("max_input_length", 1536))
+        print(f"[qe] using MetricX subprocess backend via {metricx_py}")
+        return MetricX24SubprocessScorer(
+            python_bin=metricx_py,
+            model_name=model_name,
+            tokenizer_name=tokenizer_name,
+            batch_size=batch_size,
+            max_input_length=max_input_length,
+        )
     if backend != "comet_kiwi":
         return _DummyQE(f"unknown backend {backend!r}")
 
