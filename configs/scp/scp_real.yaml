@@ -1,0 +1,128 @@
+run_id: scp_real
+seed: 42
+
+storage:
+  workdir: ./scp_runs/scp_real
+  cloud_uri: null            # e.g. hf://yourname/scp-stage4-runs
+  write_jsonl_events: true
+  write_parquet_tables: true
+  sync_every_round: false
+
+logging:
+  wandb_enabled: false
+  wandb_project: scp-stage4
+  weave_enabled: false
+  weave_project: scp-stage4
+  weave_trace_teacher_only: true
+
+recovery:
+  skip_existing_teacher_calls: true
+  skip_existing_generations: true
+  atomic_writes: true
+
+models:
+  student:
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    decoding: {temperature: 0.2, do_sample: true, top_p: 0.9, max_new_tokens: 512, seed: 42}
+  probe:
+    base_model_id: Qwen/Qwen2.5-7B-Instruct
+    lora_id: null
+    decoding: {temperature: 0.0, do_sample: false, max_new_tokens: 512}
+  teacher:
+    provider: openai
+    model: gpt-4o-mini
+    prompt_version: teacher_edit_v1
+    prompt_path: prompts/teacher_edit_v1.txt
+    system_prompt: "You are a careful, terse translation editor."
+    temperature: 0.0
+    max_tokens: 1024
+    timeout_s: 120
+    max_retries: 3
+
+extras:
+  schedule:
+    - student_gen
+    - pre_score
+    - probe_train
+    - probe_gen
+    - collapse_select
+    - teacher
+    - build_sft
+    - build_pref
+    - dev_eval
+    - summarize
+
+  # Per-round training schedule appended after `schedule`. Keys are round ids.
+  training_schedule:
+    1: [sft_train]
+    2: [sft_train, pref_train]
+    3: [sft_train, pref_train]
+
+  real_runners:
+    base_model_id: Qwen/Qwen2.5-7B-Instruct
+    max_seq_length: 4096
+    load_in_4bit: true
+    checkpoints_dir: ./scp_runs/scp_real/checkpoints
+    probe_dir: ./scp_runs/scp_real/probe
+
+  probe_training:
+    rank: 16
+    steps: 60
+    lr: 1.0e-3
+    batch_size: 4
+    seed: 42
+
+  sft_training:
+    epochs: 1
+    batch_size: 4
+    grad_accum: 4
+    lr: 2.0e-4
+    warmup_ratio: 0.03
+    lr_scheduler: cosine
+    bf16: true
+    prompt_template: "{source}\n\n번역:\n{target}"
+
+  pref_training:
+    epochs: 1
+    batch_size: 2
+    grad_accum: 8
+    lr: 5.0e-6
+    beta: 0.1
+    bf16: true
+
+  scoring:
+    scorers:
+      - {type: length_ratio, min_ratio: 0.3, max_ratio: 3.0}
+      - {type: number_match}
+      - type: rule_flags
+        rules:
+          - {name: missing_period, "on": hypothesis, pattern: '[.!?]$', flag_if: absent}
+    qe:
+      type: comet_kiwi
+      model_name: Unbabel/wmt22-cometkiwi-da
+      batch_size: 32
+      gpus: 1
+
+  collapse:
+    qe_drop_threshold: 0.05
+    weight_delta_qe: 1.0
+    weight_rule_worsened: 0.5
+
+  selector:
+    min_selection_score: 0.05
+    require_collapse_flag: false
+    max_per_round: 500
+
+  budget:
+    per_round_usd: 50.0
+    global_usd: 500.0
+    per_round_calls: 2000
+
+  dev_eval:
+    enabled: true
+    dev_set_path: data/dev_smoke.jsonl
+    metrics:
+      - {type: chrf, word_order: 2}
+      - {type: comet_kiwi, model_name: Unbabel/wmt22-cometkiwi-da}
+
+round_overrides: {}

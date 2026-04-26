@@ -1,0 +1,49 @@
+run_id: debug_001
+seed: 42
+
+storage:
+  workdir: ./scp_runs/debug_001
+  cloud_uri: null
+  write_jsonl_events: true
+  write_parquet_tables: true
+  sync_every_round: false
+
+logging:
+  wandb_enabled: false
+  weave_enabled: false
+  weave_trace_teacher_only: true
+
+recovery:
+  skip_existing_teacher_calls: true
+  skip_existing_generations: true
+  atomic_writes: true
+
+models:
+  student:
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    decoding:
+      temperature: 0.2
+      do_sample: true
+      top_p: 0.9
+      max_new_tokens: 512
+      seed: 42
+  probe:
+    base_model_id: Qwen/Qwen2.5-7B-Instruct
+    lora_id: null
+    decoding:
+      temperature: 0.0
+      do_sample: false
+      max_new_tokens: 512
+  teacher:
+    provider: echo  # swap to openai/anthropic in real runs
+    model: echo-test
+    prompt_version: teacher_edit_v1
+    prompt_path: prompts/teacher_edit_v1.txt
+    system_prompt: "You are a careful, terse translation editor."
+    temperature: 0.0
+    max_tokens: 1024
+    timeout_s: 60
+    max_retries: 3
+
+round_overrides: {}
+extras: {}

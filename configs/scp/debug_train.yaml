@@ -1,0 +1,92 @@
+extras:
+  budget:
+    per_round_calls: 100
+    per_round_usd: 10.0
+  collapse:
+    qe_drop_threshold: 0.05
+    weight_delta_qe: 1.0
+    weight_rule_worsened: 0.5
+  dev_eval:
+    dev_set_path: data/dev_smoke.jsonl
+    enabled: true
+    metrics:
+    - type: length_ratio
+    - type: chrf
+      word_order: 2
+  schedule:
+  - student_gen
+  - pre_score
+  - probe_train
+  - probe_gen
+  - collapse_select
+  - teacher
+  - build_sft
+  - build_pref
+  - dev_eval
+  - summarize
+  scoring:
+    qe:
+      type: heuristic
+    scorers:
+    - max_ratio: 3.0
+      min_ratio: 0.3
+      type: length_ratio
+    - type: number_match
+    - rules:
+      - flag_if: absent
+        name: missing_period
+        'on': hypothesis
+        pattern: '[.!?]$'
+      type: rule_flags
+  selector:
+    max_per_round: 100
+    min_selection_score: 0.0
+    require_collapse_flag: false
+  training_schedule:
+    1:
+    - sft_train
+    - pref_train
+logging:
+  wandb_enabled: false
+  wandb_project: scp-stage4
+  weave_enabled: false
+  weave_project: scp-stage4
+  weave_trace_teacher_only: true
+models:
+  probe:
+    base_model_id: stub
+    decoding:
+      do_sample: false
+      max_new_tokens: 128
+      temperature: 0.0
+  student:
+    decoding:
+      do_sample: true
+      max_new_tokens: 128
+      seed: 42
+      temperature: 0.2
+      top_p: 0.9
+    model_id: stub
+  teacher:
+    max_retries: 1
+    max_tokens: 256
+    model: echo-test
+    prompt_path: prompts/teacher_edit_v1.txt
+    prompt_version: teacher_edit_v1
+    provider: echo
+    system_prompt: You are a careful, terse translation editor.
+    temperature: 0.0
+    timeout_s: 30
+recovery:
+  atomic_writes: true
+  skip_existing_generations: true
+  skip_existing_teacher_calls: true
+round_overrides: {}
+run_id: debug_train
+seed: 42
+storage:
+  cloud_uri: null
+  sync_every_round: false
+  workdir: ./scp_runs/debug_train
+  write_jsonl_events: true
+  write_parquet_tables: true

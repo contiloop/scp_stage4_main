@@ -1,0 +1,18 @@
+{
+  "current_round": 1,
+  "checkpoints": {
+    "main": {
+      "id": "M0",
+      "path": null
+    }
+  },
+  "completed_steps": {
+    "1": [
+      "round_complete"
+    ]
+  },
+  "datasets": {
+    "sft_r1_v1": "scp_runs/debug_full/datasets/sft_r1_v1.parquet",
+    "pref_r1_v1": "scp_runs/debug_full/datasets/pref_r1_v1.parquet"
+  }
+}

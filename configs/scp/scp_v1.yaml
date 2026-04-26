@@ -1,0 +1,83 @@
+run_id: scp_v1
+seed: 42
+
+storage:
+  workdir: ./scp_runs/scp_v1
+  cloud_uri: null
+  write_jsonl_events: true
+  write_parquet_tables: true
+  sync_every_round: false
+
+logging:
+  wandb_enabled: false
+  wandb_project: scp-stage4
+  weave_enabled: false
+  weave_project: scp-stage4
+  weave_trace_teacher_only: true
+
+recovery:
+  skip_existing_teacher_calls: true
+  skip_existing_generations: true
+  atomic_writes: true
+
+models:
+  student:
+    model_id: Qwen/Qwen2.5-7B-Instruct
+    decoding:
+      temperature: 0.2
+      do_sample: true
+      top_p: 0.9
+      max_new_tokens: 512
+      seed: 42
+  probe:
+    base_model_id: Qwen/Qwen2.5-7B-Instruct
+    lora_id: null
+    decoding:
+      temperature: 0.0
+      do_sample: false
+      max_new_tokens: 512
+  teacher:
+    provider: openai
+    model: gpt-4o-mini
+    prompt_version: teacher_edit_v1
+    prompt_path: prompts/teacher_edit_v1.txt
+    system_prompt: "You are a careful, terse translation editor."
+    temperature: 0.0
+    max_tokens: 1024
+    timeout_s: 120
+    max_retries: 3
+
+# Scorer config consumed by scp.scoring.build_scorer_from_config.
+# COMET-Kiwi runs in a separate venv via $COMET_PYTHON (see scp.qe_setup).
+extras:
+  scoring:
+    scorers:
+      - {type: length_ratio, min_ratio: 0.3, max_ratio: 3.0}
+      - {type: number_match}
+      - type: rule_flags
+        rules:
+          - {name: missing_period, "on": hypothesis, pattern: '[.!?]$', flag_if: absent}
+    qe:
+      type: comet_kiwi
+      model_name: Unbabel/wmt22-cometkiwi-da
+      fallback_model_name: null
+      batch_size: 32
+      gpus: 1
+
+  collapse:
+    qe_drop_threshold: 0.05
+    weight_delta_qe: 1.0
+    weight_rule_worsened: 0.5
+
+  selector:
+    min_selection_score: 0.05
+    require_collapse_flag: false
+    max_per_round: 500
+    diversity_clustering: false
+
+  budget:
+    per_round_usd: 50.0
+    global_usd: 500.0
+    per_round_calls: 2000
+
+round_overrides: {}

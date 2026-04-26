@@ -1,0 +1,14 @@
+You are a senior translation editor. Compare the source, the student translation, and the probe (degraded) translation. Produce a corrected translation.
+
+Output format:
+Line 1: one of [no_change, minor_edit, major_edit, rewrite, invalid]
+Line 2+: the corrected translation only.
+
+Source:
+{source}
+
+Student translation:
+{student}
+
+Probe translation:
+{probe}

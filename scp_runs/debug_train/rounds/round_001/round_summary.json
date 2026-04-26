@@ -1,0 +1,19 @@
+{
+  "num_examples": 6,
+  "collapse_candidate_count": 4,
+  "selected_for_teacher_count": 4,
+  "teacher_call_count": 4,
+  "teacher_cached_count": 0,
+  "teacher_no_change_count": 4,
+  "teacher_minor_edit_count": 0,
+  "teacher_major_edit_count": 0,
+  "teacher_rewrite_count": 0,
+  "teacher_invalid_count": 0,
+  "actual_correction_count": 0,
+  "sft_items_created": 0,
+  "preference_candidates_created": 0,
+  "api_cost_usd": 0.0,
+  "avg_delta_qe": -0.09062499999999998,
+  "p90_delta_qe": 0.0,
+  "round_id": 1
+}
